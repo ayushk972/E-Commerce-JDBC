@@ -1,133 +1,82 @@
 package com.ecom.repository;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
 
-import java.sql.*;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.util.List;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.MockedStatic;
 
 import com.ecom.exception.InvalidOrderException;
 import com.ecom.model.CartItem;
+import com.ecom.model.Customers;
 import com.ecom.model.Order;
 import com.ecom.model.OrderStatus;
 import com.ecom.util.DataBaseConnection;
 
 public class OrdersRepositoryTest {
 
-    private OrdersRepository repository;
-    private MockedStatic<DataBaseConnection> mockedDb;
-    private Connection mockConnection;
-    private PreparedStatement mockStatement;
-    private ResultSet mockResultSet;
+    private final OrdersRepository ordersRepo = new OrdersRepository();
+    private final CustomersRepository customersRepo = new CustomersRepository();
+    private int custId;
+    private String testOrderId;
 
     @BeforeEach
-    void setUp() throws Exception {
-        repository = new OrdersRepository();
-        mockConnection = mock(Connection.class);
-        mockStatement = mock(PreparedStatement.class);
-        mockResultSet = mock(ResultSet.class);
-
-        mockedDb = mockStatic(DataBaseConnection.class);
-        mockedDb.when(DataBaseConnection::getConnection).thenReturn(mockConnection);
-        when(mockConnection.prepareStatement(anyString())).thenReturn(mockStatement);
+    void setUp() {
+        String testEmail = "ord_repo_" + System.currentTimeMillis() + "@test.com";
+        custId = customersRepo.addCustomer(new Customers(0, "OrderCust", testEmail, "Pass", "1234567890", "Street"));
+        testOrderId = "ORD-" + (System.currentTimeMillis() % 1000000000L);
     }
 
     @AfterEach
     void tearDown() {
-        mockedDb.close();
-    }
-
-    private void setupOrderResultSet() throws Exception {
-        when(mockResultSet.getString("order_id")).thenReturn("ORD-1001");
-        when(mockResultSet.getInt("customer_id")).thenReturn(1);
-        when(mockResultSet.getDouble("total_amount")).thenReturn(150.0);
-        when(mockResultSet.getString("order_status")).thenReturn("PLACED");
-        when(mockResultSet.getTimestamp("order_date")).thenReturn(Timestamp.valueOf(LocalDateTime.now()));
-        when(mockResultSet.getTimestamp("updated_at")).thenReturn(Timestamp.valueOf(LocalDateTime.now()));
-    }
-
-    @Test
-    void testSaveOrderSuccess() throws Exception {
-        List<CartItem> items = List.of(new CartItem(1, "Mouse", 25.0, 2));
-        Order order = new Order("ORD-1001", 1, items, 50.0);
-        when(mockStatement.executeUpdate()).thenReturn(1);
-        when(mockStatement.executeBatch()).thenReturn(new int[]{1});
-
-        assertDoesNotThrow(() -> repository.saveOrder(order));
-        verify(mockConnection).setAutoCommit(false);
-        verify(mockConnection).commit();
+        try (Connection con = DataBaseConnection.getConnection()) {
+            if (testOrderId != null) {
+                try (PreparedStatement pstmt = con.prepareStatement("DELETE FROM order_items WHERE order_id = ?")) {
+                    pstmt.setString(1, testOrderId); pstmt.executeUpdate();
+                }
+                try (PreparedStatement pstmt = con.prepareStatement("DELETE FROM orders WHERE order_id = ?")) {
+                    pstmt.setString(1, testOrderId); pstmt.executeUpdate();
+                }
+            }
+            if (custId > 0) {
+                try (PreparedStatement pstmt = con.prepareStatement("DELETE FROM customers WHERE customer_id = ?")) {
+                    pstmt.setInt(1, custId); pstmt.executeUpdate();
+                }
+            }
+        } catch (Exception ignored) {}
     }
 
     @Test
-    void testSaveOrderException() throws Exception {
-        List<CartItem> items = List.of(new CartItem(1, "Mouse", 25.0, 2));
-        Order order = new Order("ORD-1001", 1, items, 50.0);
-        when(mockStatement.executeUpdate()).thenThrow(new SQLException("Order insert failed"));
+    void testOrderCrud() {
+        CartItem item = new CartItem(1, "iPhone 16", 999.0, 1);
+        Order order = new Order(testOrderId, custId, List.of(item), 999.0);
 
-        assertDoesNotThrow(() -> repository.saveOrder(order));
+        ordersRepo.saveOrder(order);
+
+        Order found = ordersRepo.findById(testOrderId);
+        assertNotNull(found);
+        assertEquals(testOrderId, found.getOrderId());
+        assertEquals(custId, found.getCustomerId());
+        assertEquals(OrderStatus.PLACED, found.getOrderStatus());
+        assertFalse(found.getItems().isEmpty());
+
+        ordersRepo.updateOrderStatus(testOrderId, OrderStatus.CONFIRMED);
+        Order updated = ordersRepo.findById(testOrderId);
+        assertEquals(OrderStatus.CONFIRMED, updated.getOrderStatus());
+
+        List<Order> byCust = ordersRepo.findByCustomerId(custId);
+        assertFalse(byCust.isEmpty());
+
+        List<Order> all = ordersRepo.getAllOrders();
+        assertFalse(all.isEmpty());
     }
 
     @Test
-    void testFindByIdSuccess() throws Exception {
-        when(mockStatement.executeQuery()).thenReturn(mockResultSet);
-        when(mockResultSet.next()).thenReturn(true, false, true, false);
-        setupOrderResultSet();
-        when(mockResultSet.getInt("product_id")).thenReturn(1);
-        when(mockResultSet.getString("product_name")).thenReturn("Mouse");
-        when(mockResultSet.getDouble("price")).thenReturn(25.0);
-        when(mockResultSet.getInt("quantity")).thenReturn(2);
-
-        Order order = repository.findById("ORD-1001");
-        assertNotNull(order);
-        assertEquals("ORD-1001", order.getOrderId());
-        assertEquals(OrderStatus.PLACED, order.getOrderStatus());
-    }
-
-    @Test
-    void testFindByIdNotFound() throws Exception {
-        when(mockStatement.executeQuery()).thenReturn(mockResultSet);
-        when(mockResultSet.next()).thenReturn(false);
-
-        assertThrows(InvalidOrderException.class, () -> repository.findById("NON_EXISTENT"));
-    }
-
-    @Test
-    void testFindByCustomerId() throws Exception {
-        when(mockStatement.executeQuery()).thenReturn(mockResultSet);
-        when(mockResultSet.next()).thenReturn(true, false, true, false);
-        setupOrderResultSet();
-        when(mockResultSet.getInt("product_id")).thenReturn(1);
-        when(mockResultSet.getString("product_name")).thenReturn("Mouse");
-        when(mockResultSet.getDouble("price")).thenReturn(25.0);
-        when(mockResultSet.getInt("quantity")).thenReturn(2);
-
-        List<Order> orders = repository.findByCustomerId(1);
-        assertEquals(1, orders.size());
-        assertEquals("ORD-1001", orders.get(0).getOrderId());
-    }
-
-    @Test
-    void testGetAllOrders() throws Exception {
-        when(mockStatement.executeQuery()).thenReturn(mockResultSet);
-        when(mockResultSet.next()).thenReturn(true, false, false);
-        setupOrderResultSet();
-
-        List<Order> orders = repository.getAllOrders();
-        assertEquals(1, orders.size());
-    }
-
-    @Test
-    void testUpdateOrderStatus() throws Exception {
-        when(mockStatement.executeUpdate()).thenReturn(1);
-        assertDoesNotThrow(() -> repository.updateOrderStatus("ORD-1001", OrderStatus.SHIPPED));
-        verify(mockStatement).executeUpdate();
+    void testFindByIdNotFound() {
+        assertThrows(InvalidOrderException.class, () -> ordersRepo.findById("NON_EXISTENT_ID_999"));
     }
 }

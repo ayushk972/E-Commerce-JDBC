@@ -6,41 +6,66 @@ import java.util.List;
 
 public class Order {
 
-    private String        orderId;
-    private int           customerId;
-    private List<CartItem> items;
-    private double        totalqty;
-    private OrderStatus   orderStatus;
-    private LocalDateTime orderDate; // Created at
-    private LocalDateTime updatedAt;
+	private String orderId;
+	private int customerId;
+	private List<CartItem> items;
+	private double totalqty;
+	private OrderStatus orderStatus;
+	private LocalDateTime orderDate; // Created at
+	private LocalDateTime updatedAt;
 
-    private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
+	private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
 
-    public Order(String orderId, int customerId, List<CartItem> items, double totalqty) {
-        this(orderId, customerId, items, totalqty, LocalDateTime.now(), LocalDateTime.now());
-    }
+	public Order(String orderId, int customerId, List<CartItem> items, double totalqty) {
+		this(orderId, customerId, items, totalqty, LocalDateTime.now(), LocalDateTime.now());
+	}
 
-    public Order(String orderId, int customerId, List<CartItem> items, double totalqty,
-                 LocalDateTime orderDate, LocalDateTime updatedAt) {
-        this.orderId     = orderId;
-        this.customerId  = customerId;
-        this.items       = items;
-        this.totalqty    = totalqty;
-        this.orderStatus = OrderStatus.PLACED;
-        this.orderDate   = orderDate != null ? orderDate : LocalDateTime.now();
-        this.updatedAt   = updatedAt != null ? updatedAt : this.orderDate;
-    }
+	public Order(String orderId, int customerId, List<CartItem> items, double totalqty, LocalDateTime orderDate,
+			LocalDateTime updatedAt) {
+		this.orderId = orderId;
+		this.customerId = customerId;
+		this.items = items;
+		this.totalqty = totalqty;
+		this.orderStatus = OrderStatus.PLACED;
+		this.orderDate = orderDate != null ? orderDate : LocalDateTime.now();
+		this.updatedAt = updatedAt != null ? updatedAt : this.orderDate;
+	}
 
-    public String        getOrderId()     { return orderId; }
-    public int           getCustomerId()  { return customerId; }
-    public List<CartItem> getItems()      { return items; }
-    public double        getTotalqty()    { return totalqty; }
-    public OrderStatus   getOrderStatus() { return orderStatus; }
-    public LocalDateTime getOrderDate()   { return orderDate; }
-    public LocalDateTime getUpdatedAt()   { return updatedAt; }
+	public String getOrderId() {
+		return orderId;
+	}
 
-    public void setOrderStatus(OrderStatus orderStatus) { this.orderStatus = orderStatus; }
-    public void setUpdatedAt(LocalDateTime u)           { this.updatedAt = u; }
+	public int getCustomerId() {
+		return customerId;
+	}
+
+	public List<CartItem> getItems() {
+		return items;
+	}
+
+	public double getTotalqty() {
+		return totalqty;
+	}
+
+	public OrderStatus getOrderStatus() {
+		return orderStatus;
+	}
+
+	public LocalDateTime getOrderDate() {
+		return orderDate;
+	}
+
+	public LocalDateTime getUpdatedAt() {
+		return updatedAt;
+	}
+
+	public void setOrderStatus(OrderStatus orderStatus) {
+		this.orderStatus = orderStatus;
+	}
+
+	public void setUpdatedAt(LocalDateTime u) {
+		this.updatedAt = u;
+	}
 
     // Customer order view: shows when ordered, no update timestamp
     @Override

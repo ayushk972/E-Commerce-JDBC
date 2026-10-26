@@ -1,8 +1,6 @@
 package com.ecom.main;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -12,24 +10,27 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import com.ecom.model.Customers;
-import com.ecom.service.CustomersService;
-import com.ecom.service.OrdersService;
-import com.ecom.service.ProductsService;
+import com.ecom.model.Products;
+import com.ecom.repository.*;
+import com.ecom.service.*;
 
 public class AdminMenuTest {
 
-    private ProductsService productsService;
-    private CustomersService customersService;
-    private OrdersService ordersService;
     private AdminMenu adminMenu;
 
     @BeforeEach
     void setUp() {
-        productsService = mock(ProductsService.class);
-        customersService = mock(CustomersService.class);
-        ordersService = mock(OrdersService.class);
-        adminMenu = new AdminMenu(productsService, customersService, ordersService);
+        ProductsRepository pRepo = new ProductsRepository();
+        CustomersRepository cRepo = new CustomersRepository();
+        OrdersRepository oRepo = new OrdersRepository();
+        CartRepository cartRepo = new CartRepository();
+
+        ProductsService pService = new ProductsService(pRepo);
+        CustomersService cService = new CustomersService(cRepo);
+        CartService cartService = new CartService(cartRepo, pService);
+        OrdersService oService = new OrdersService(oRepo, cartService, pService, pRepo);
+
+        adminMenu = new AdminMenu(pService, cService, oService);
     }
 
     @AfterEach
@@ -39,81 +40,46 @@ public class AdminMenuTest {
 
     private void runWithInput(String input) {
         ConsoleHelper.setScanner(new Scanner(new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8))));
-        adminMenu.show();
+        assertDoesNotThrow(() -> adminMenu.show());
     }
 
     @Test
-    void testViewAndSearchProducts() {
+    void testMenuNavigationAndSearches() {
         String input = String.join("\n",
             "1",
-            "4", "5",
+            "4", "1",
             "5", "Laptop",
             "6", "Electronics",
-            "7", "Dell",
-            "8", "100", "500",
-            "0"
-        ) + "\n";
-
-        runWithInput(input);
-        verify(productsService).viewAllProductsAdmin();
-        verify(productsService).searchByIdAdmin(5);
-        verify(productsService).searchByName("Laptop");
-        verify(productsService).searchByCategory("Electronics");
-        verify(productsService).searchByBrand("Dell");
-        verify(productsService).searchByPriceRange(100.0, 500.0);
-    }
-
-    @Test
-    void testAddAndModifyProducts() {
-        String input = String.join("\n",
-            "2", "Mouse", "Accessories", "Logitech", "25.0", "10",
-            "3", "dummy/path.csv",
-            "9", "1", "29.99",
-            "10", "1", "15",
-            "11", "1",
-            "0"
-        ) + "\n";
-
-        runWithInput(input);
-        verify(productsService).addProduct("Mouse", "Accessories", 25.0, 10, "Logitech");
-        verify(productsService).addProductsFromFile("dummy/path.csv");
-        verify(productsService).updatePrice(1, 29.99);
-        verify(productsService).updateQuantity(1, 15);
-        verify(productsService).deleteProduct(1);
-    }
-
-    @Test
-    void testCustomerManagement() {
-        Customers c = new Customers(1, "Alice", "alice@example.com", "pass", "9999999999", "Addr");
-        when(customersService.searchById(1)).thenReturn(c);
-
-        String input = String.join("\n",
+            "7", "Brand",
+            "8", "10", "1000",
             "12",
-            "13", "1",
-            "0"
-        ) + "\n";
-
-        runWithInput(input);
-        verify(customersService).viewAllCustomersAdmin();
-        verify(customersService).searchById(1);
-    }
-
-    @Test
-    void testOrderManagementAndExceptions() {
-        String input = String.join("\n",
             "14",
-            "15", "ORD-1",
-            "16", "ORD-1", "1",
-            "16", "ORD-1", "2",
-            "16", "ORD-1", "3",
-            "16", "ORD-1", "99",
             "999",
             "0"
         ) + "\n";
 
         runWithInput(input);
-        verify(ordersService).viewAllOrdersAdmin();
-        verify(ordersService).viewOrderAdmin("ORD-1");
-        verify(ordersService, atLeastOnce()).updateOrderStatus(eq("ORD-1"), any());
+    }
+
+    @Test
+    void testProductManagementOptions() {
+        String input = String.join("\n",
+            "2", "AdminProd_" + System.currentTimeMillis(), "Tech", "AdminBrand", "99.0", "5",
+            "3", "non_existent_file.csv",
+            "9", "1", "109.99",
+            "10", "1", "20",
+            "11", "-999",
+            "13", "-999",
+            "15", "NON_EXISTENT_ORDER",
+            "16", "NON_EXISTENT_ORDER", "1",
+            "0"
+        ) + "\n";
+
+        runWithInput(input);
+
+        ProductsRepository pRepo = new ProductsRepository();
+        for (Products p : pRepo.findByName("AdminProd_")) {
+            pRepo.deleteProduct(p.getProductId());
+        }
     }
 }

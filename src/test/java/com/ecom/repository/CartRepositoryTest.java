@@ -1,83 +1,72 @@
 package com.ecom.repository;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.util.List;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.MockedStatic;
 
 import com.ecom.model.CartItem;
+import com.ecom.model.Customers;
+import com.ecom.model.Products;
 import com.ecom.util.DataBaseConnection;
 
 public class CartRepositoryTest {
 
-    private CartRepository cartRepository;
-    private MockedStatic<DataBaseConnection> mockedDb;
-    private Connection mockConnection;
-    private PreparedStatement mockStatement;
-    private ResultSet mockResultSet;
+    private final CartRepository cartRepo = new CartRepository();
+    private final CustomersRepository customersRepo = new CustomersRepository();
+    private final ProductsRepository productsRepo = new ProductsRepository();
+    private int testCustomerId;
+    private int prodId;
 
     @BeforeEach
-    void setUp() throws Exception {
-        cartRepository = new CartRepository();
-        mockConnection = mock(Connection.class);
-        mockStatement = mock(PreparedStatement.class);
-        mockResultSet = mock(ResultSet.class);
-
-        mockedDb = mockStatic(DataBaseConnection.class);
-        mockedDb.when(DataBaseConnection::getConnection).thenReturn(mockConnection);
-        when(mockConnection.prepareStatement(anyString())).thenReturn(mockStatement);
+    void setUp() {
+        String email = "cart_repo_" + System.currentTimeMillis() + "@test.com";
+        testCustomerId = customersRepo.addCustomer(new Customers(0, "CartCust", email, "Pass", "1234567890", "Street"));
+        String pName = "CartRepoProd_" + System.currentTimeMillis();
+        productsRepo.addProduct(new Products(0, pName, "Tech", 25.0, 10, "Brand"));
+        prodId = productsRepo.findByName(pName).get(0).getProductId();
     }
 
     @AfterEach
     void tearDown() {
-        mockedDb.close();
+        cartRepo.clearCart(testCustomerId);
+        if (prodId > 0) {
+            productsRepo.deleteProduct(prodId);
+        }
+        if (testCustomerId > 0) {
+            try (Connection con = DataBaseConnection.getConnection();
+                 PreparedStatement pstmt = con.prepareStatement("DELETE FROM customers WHERE customer_id = ?")) {
+                pstmt.setInt(1, testCustomerId);
+                pstmt.executeUpdate();
+            } catch (Exception ignored) {}
+        }
     }
 
     @Test
-    void testAddToCart() throws Exception {
-        CartItem item = new CartItem(1, "Mouse", 25.0, 2);
-        when(mockStatement.executeUpdate()).thenReturn(1);
-        assertDoesNotThrow(() -> cartRepository.addToCart(101, item));
-        verify(mockStatement, times(1)).executeUpdate();
-    }
+    void testCartOperations() {
+        CartItem item = new CartItem(prodId, "CartRepoProd", 25.0, 2);
 
-    @Test
-    void testGetCartItems() throws Exception {
-        when(mockStatement.executeQuery()).thenReturn(mockResultSet);
-        when(mockResultSet.next()).thenReturn(true, false);
-        when(mockResultSet.getInt("product_id")).thenReturn(1);
-        when(mockResultSet.getString("product_name")).thenReturn("Mouse");
-        when(mockResultSet.getDouble("price")).thenReturn(25.0);
-        when(mockResultSet.getInt("quantity")).thenReturn(2);
+        cartRepo.addToCart(testCustomerId, item);
+        assertTrue(cartRepo.isInCart(testCustomerId, prodId));
 
-        List<CartItem> items = cartRepository.getCartItems(101);
-        assertEquals(1, items.size());
-        assertEquals("Mouse", items.get(0).getProductName());
-    }
+        List<CartItem> items = cartRepo.getCartItems(testCustomerId);
+        assertFalse(items.isEmpty());
+        assertEquals(prodId, items.get(0).getProductId());
 
-    @Test
-    void testRemoveFromCartAndClear() throws Exception {
-        when(mockStatement.executeUpdate()).thenReturn(1);
-        assertDoesNotThrow(() -> cartRepository.removeFromCart(101, 1));
-        assertDoesNotThrow(() -> cartRepository.clearCart(101));
-        assertDoesNotThrow(() -> cartRepository.updateQuantity(101, 1, 5));
-    }
+        cartRepo.updateQuantity(testCustomerId, prodId, 5);
+        List<CartItem> updatedItems = cartRepo.getCartItems(testCustomerId);
+        assertEquals(5, updatedItems.get(0).getQuantity());
 
-    @Test
-    void testIsInCart() throws Exception {
-        when(mockStatement.executeQuery()).thenReturn(mockResultSet);
-        when(mockResultSet.next()).thenReturn(true);
-        when(mockResultSet.getInt(1)).thenReturn(1);
+        cartRepo.removeFromCart(testCustomerId, prodId);
+        assertFalse(cartRepo.isInCart(testCustomerId, prodId));
 
-        assertTrue(cartRepository.isInCart(101, 1));
+        cartRepo.addToCart(testCustomerId, item);
+        cartRepo.clearCart(testCustomerId);
+        assertTrue(cartRepo.getCartItems(testCustomerId).isEmpty());
     }
 }
